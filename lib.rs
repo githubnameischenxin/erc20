@@ -3,12 +3,9 @@
 #[ink::contract]
 mod erc20 {
     use ink::storage::Mapping;
-    use scale::{Decode, Encode};
+    use trait_erc20::{TERC20, Error, Result};
 
 
-    /// Defines the storage of your contract.
-    /// Add new fields to the below struct in order
-    /// to add new static storage fields to your contract.
     #[ink(storage)]
     #[derive(Default)]
     pub struct Erc20 {
@@ -35,17 +32,8 @@ mod erc20 {
         value: Balance
     }
 
-    #[derive(Debug, PartialEq, Eq, Encode, Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
-    pub enum Error {
-        BalanceTooLow,
-        AllowanceTooLow,
-    }
-
-    type Result<T> = core::result::Result<T, Error>;
 
     impl Erc20 {
-        /// Constructor that initializes the `bool` value to the given `init_value`.
         #[ink(constructor)]
         pub fn new(total_supply: Balance) -> Self {
             let mut balances = Mapping::new();
@@ -67,51 +55,7 @@ mod erc20 {
              }
         }
 
-        #[ink(message)]
-        pub fn total_supply(&self) -> Balance {
-            self.total_supply
-        }
-
-        #[ink(message)]
-        pub fn balance_of(&self, who: AccountId) -> Balance {
-            self.balances.get(&who).unwrap_or_default()
-        }
-
-        #[ink(message)]
-        pub fn transfer(&mut self, to: AccountId, value: Balance) -> Result<()> {
-            let sender = self.env().caller();
-            self.transfer_helper(&sender, &to, value)
-        }
-
-        #[ink(message)]
-        pub fn transfer_from(&mut self, from: AccountId, to: AccountId, value: Balance) -> Result<()> {
-            let sender = self.env().caller();
-            let allowance =  self.allowances.get(&(from, sender)).unwrap_or_default();
-
-            if allowance < value {
-                return Err(Error::AllowanceTooLow);
-            }
-
-            self.allowances.insert(&(from, sender), &(allowance - value));
-
-            self.transfer_helper(&from, &to, value)
-        }
-
-        #[ink(message)]
-        pub fn approve(&mut self, to: AccountId, value: Balance) -> Result<()> {
-            let sender = self.env().caller();
-            self.allowances.insert(&(sender, to), &value);
-
-            self.env().emit_event(
-                Approval {
-                    from: sender,
-                    to,
-                    value
-                }
-            );
-
-            Ok(())
-        }
+        
 
         pub fn transfer_helper(&mut self, from: &AccountId, to: &AccountId, value: Balance) -> Result<()> {
             let balance_from = self.balance_of(*from);
@@ -136,19 +80,65 @@ mod erc20 {
         }
     }
 
-    /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
-    /// module and test functions are marked with a `#[test]` attribute.
-    /// The below code is technically just normal Rust code.
+    impl TERC20 for Erc20 {
+        #[ink(message)]
+        fn total_supply(&self) -> Balance {
+            self.total_supply
+        }
+
+        #[ink(message)]
+        fn balance_of(&self, who: AccountId) -> Balance {
+            self.balances.get(&who).unwrap_or_default()
+        }
+
+        #[ink(message)]
+        fn transfer(&mut self, to: AccountId, value: Balance) -> Result<()> {
+            let sender = self.env().caller();
+            self.transfer_helper(&sender, &to, value)
+        }
+
+        #[ink(message)]
+        fn transfer_from(&mut self, from: AccountId, to: AccountId, value: Balance) -> Result<()> {
+            let sender = self.env().caller();
+            let allowance =  self.allowances.get(&(from, sender)).unwrap_or_default();
+
+            if allowance < value {
+                return Err(Error::AllowanceTooLow);
+            }
+
+            self.allowances.insert(&(from, sender), &(allowance - value));
+
+            self.transfer_helper(&from, &to, value)
+        }
+
+        #[ink(message)]
+        fn approve(&mut self, to: AccountId, value: Balance) -> Result<()> {
+            let sender = self.env().caller();
+            self.allowances.insert(&(sender, to), &value);
+
+            self.env().emit_event(
+                Approval {
+                    from: sender,
+                    to,
+                    value
+                }
+            );
+
+            Ok(())
+        }
+    }
+
+
     #[cfg(test)]
     mod tests {
         use scale::Decode;
 
-        /// Imports all the definitions from the outer scope so we can use them here.
+        
         use super::*;
 
         type Event = <Erc20 as ::ink::reflect::ContractEventBase>::Type;
 
-        /// We test if the default constructor does its job.
+        
         #[ink::test]
         fn constructor_workers() {
             let erc20 = Erc20::new(10000);
